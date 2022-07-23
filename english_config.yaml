@@ -1,0 +1,14 @@
+project: TransPhono
+
+language:
+  web_path: "http://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b"
+  maximum_word_length: 10
+  use_features: False
+
+dataset:
+  batch_size: 32
+  shuffle: True
+  use_plurals: False
+  train_size: 0.7
+
+
