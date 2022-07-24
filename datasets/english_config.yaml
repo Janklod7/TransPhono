@@ -6,9 +6,7 @@ language:
   use_features: False
 
 dataset:
-  batch_size: 32
   shuffle: True
   use_plurals: False
-  train_size: 0.7
 
 

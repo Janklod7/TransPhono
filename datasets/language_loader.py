@@ -8,6 +8,11 @@ from torch.utils.data import DataLoader, random_split
 
 class Language(ABC):
 
+    def __init__(self):
+        self.phonemes = None
+        self.data = None
+        self.index_to_phon = None
+
     @abstractmethod
     def getX(self):
         pass
@@ -31,12 +36,10 @@ class LanguageData(Dataset):
     def __getitem__(self, index) -> T_co:
         return self.x[index], self.y[index]
 
-    def generate_loader(self, batch_size=None, size=None):
+    def generate_loader(self, batch_size: int, size, device):
         length = len(self.x)
         if not size:
             size = float(self.config["train_size"])
-        if not batch_size:
-            batch_size = int(self.config["batch_size"])
         train_size = int(length * size)
         test_size = length - train_size
         training_data, test_data = random_split(self, [train_size, test_size])

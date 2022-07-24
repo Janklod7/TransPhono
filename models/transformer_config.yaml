@@ -1,0 +1,15 @@
+model_type: basic transformer
+embedding_size: 12
+nhead: 2
+nlayers: 3
+dropout: 0.2
+d_hid: 200
+
+train_size: 0.7
+batch_size: 32
+generator_lr: 0.01
+discriminator_lr: 0.001
+epoches: 30
+log_intervals: 400
+
+
