@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import yaml
 
+import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import T_co
 from torch.utils.data import DataLoader, random_split
@@ -46,6 +47,19 @@ class LanguageData(Dataset):
         train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
         test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
         return train_dataloader, test_dataloader
+
+    def vec2word(self, output):
+        phoneme_indices = torch.max(output, dim=2).indices
+        words = []
+        for w in phoneme_indices:
+            word = []
+            for p in w:
+                if p > 0:
+                    word.append(self.language.index_to_phon[p.item()])
+            word = " ".join(word)
+            words.append(word)
+        return words
+
 
 
 

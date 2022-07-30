@@ -42,21 +42,20 @@ class TransPhono(nn.Module):
         self.dataset = dataset
         self.ntoken = len(dataset.language.phonemes)
         self.features = len(dataset.language.phonemes)
-        self.d_model = int(self.config['d_model'])
         self.nhead = int(self.config['nhead'])
         self.d_hid = int(self.config['d_hid'])
         self.nlayers = int(self.config['nlayers'])
         self.embed_size = int(self.config['embedding_size'])
-        self.dropout = float(self.config['embedding_size'])
+        self.dropout = float(self.config['dropout'])
 
-        self.pos_encoder = PositionalEncoding(self.d_model, self.dropout, max_len=self.dataset.batch_size)
-        encoder_layers = TransformerEncoderLayer(self.d_model, self.nhead, self.d_hid, self.dropout)
+        self.pos_encoder = PositionalEncoding(self.embed_size, self.dropout, max_len=int(self.config["batch_size"]))
+        encoder_layers = TransformerEncoderLayer(self.embed_size, self.nhead, self.d_hid, self.dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, self.nlayers)
-        self.decoder = nn.Linear(self.d_model, self.ntoken)
+        self.decoder = nn.Linear(self.embed_size, self.ntoken)
         if features is not None:
             self.encoder = nn.Embedding.from_pretrained(features, freeze=True)
         else:
-            self.encoder = nn.Embedding(self.ntoken, self.d_model)
+            self.encoder = nn.Embedding(self.ntoken, self.embed_size)
             self.init_weights()
         self.sftmx = nn.Softmax(dim=2)
 
@@ -67,7 +66,7 @@ class TransPhono(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: Tensor, src_mask: Tensor) -> Tensor:
-        src = self.encoder(src) * math.sqrt(self.d_model)
+        src = self.encoder(src) * math.sqrt(self.d_hid)
 
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, src_mask)
@@ -78,7 +77,7 @@ class TransPhono(nn.Module):
     def generate_words(self, src_mask):
 
         fake_gen = (torch.rand((self.batch_size, len(self.dataset.language.phonemes), self.embed_size),
-                               device=self.device) * 2 - 1) * math.sqrt(self.d_model)
+                               device=self.device) * 2 - 1) * math.sqrt(self.d_hid)
         src = self.pos_encoder(fake_gen)
         output = self.transformer_encoder(src, src_mask)
         output = self.decoder(output)
@@ -97,11 +96,11 @@ class TransPhono(nn.Module):
         start_time = time.time()
         src_mask = generate_square_subsequent_mask(batch_size).to(self.device)
 
-        num_batches = len(train_data) // batch_size
+        num_batches = len(train_data)
         batch = 0
         for data, targets in iter(train_data):
-            if len(src_mask) != batch_size:  # only on last batch
-                src_mask = src_mask[:batch_size, :batch_size]
+            if len(data) != batch_size:  # only on last batch
+                src_mask = src_mask[:data.shape[0], :data.shape[0]]
             output = self(data, src_mask)
             loss = 10 * criterion(output, targets.float())
 
@@ -124,19 +123,26 @@ class TransPhono(nn.Module):
                 start_time = time.time()
         gen_scheduler.step()
 
-    def evaluate(self, parameters, eval_data: Tensor, criterion) -> float:
+    def evaluate(self, eval_data: Tensor, parameters, criterion, show_example=0) -> float:
         self.eval()
         batch_size = int(parameters["batch_size"])
         total_loss = 0.
         src_mask = generate_square_subsequent_mask(batch_size).to(self.device)
         with torch.no_grad():
+            fake_words = real_words = []
+            if show_example > 0:
+                example_x, example_y = next(iter(eval_data))
+                fake_words = self.dataset.vec2word(self(example_x, src_mask))
+                real_words = self.dataset.vec2word(example_y)
             for data, targets in iter(eval_data):
-
-                src_mask = src_mask[:batch_size, :batch_size]
+                if len(data) != batch_size:  # only on last batch
+                    src_mask = src_mask[:data.shape[0], :data.shape[0]]
                 output = self(data, src_mask)
-                output_flat = output
-                total_loss += batch_size * criterion(output_flat, targets.float()).item()
-        return total_loss / (len(eval_data) - 1)
+                total_loss += batch_size * criterion(output, targets.float()).item()
+            for f, r in zip(fake_words[:show_example], real_words[:show_example]):
+                print(f, ",", r)
+        return total_loss / ((len(eval_data) * batch_size - 1) - 1)
+
 
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:

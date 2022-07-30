@@ -1,5 +1,5 @@
 model_type: basic transformer
-embedding_size: 12
+embedding_size: 30
 nhead: 2
 nlayers: 3
 dropout: 0.2

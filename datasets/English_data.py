@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from torch.utils.data import dataset
 import requests
-from language_loader import Language
+from datasets.language_loader import Language
 
 
 class EngLang(Language):
@@ -37,8 +37,8 @@ class EngLang(Language):
     def parse_new(self, save=False):
         response = requests.get("http://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b").text.split("\n")
         self.data = {}
-        self.index_to_phon = {}
-        self.phonemes = {}
+        self.index_to_phon = {0: ""}
+        self.phonemes = {"": 0}
         self.phonemes["PLUR"] = 1
         toolong = 0
         maxlen = 0
@@ -59,7 +59,7 @@ class EngLang(Language):
                     self.phonemes[p] = ip
                     self.index_to_phon[ip] = p
                     ip += 1
-        pa = "./Languages/English"
+        pa = "datasets/Languages/English"
         with open(f"{pa}/phonemes_{self.config['maximum_word_length']}.json", 'w') as fp:
             json.dump(self.phonemes, fp)
         with open(f"{pa}/data_{self.config['maximum_word_length']}.json", 'w') as fp:
@@ -83,8 +83,8 @@ class EngLang(Language):
         with open(f"{pa}/plurals_{self.config['maximum_word_length']}.json", 'w') as fp:
             json.dump(self.plurals, fp)
 
-        for w in self.plurals:
-            self.data[w] = self.plurals[w]
+        # for w in self.plurals:
+        #     self.data[w] = self.plurals[w]
 
         print(f"Got {len(self.data) - len(self.plurals)} words")
         print(f"Got {len(self.phonemes)} phonemes")
@@ -98,8 +98,9 @@ class EngLang(Language):
     def make_vecs(self):
         return torch.nn.utils.rnn.pad_sequence([self.word2vec(w) for w, l in self.data.values()],
                                                batch_first=True), \
-               torch.nn.utils.rnn.pad_sequence([self.word2vec(l) for w, l in self.data.values()],
-                                               batch_first=True)
+               torch.nn.functional.one_hot(
+                   torch.nn.utils.rnn.pad_sequence([self.word2vec(l) for w, l in self.data.values()], batch_first=True),
+                   num_classes=len(self.phonemes))
 
     def getX(self):
         return self.vecs_x
