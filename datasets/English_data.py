@@ -15,6 +15,7 @@ from datasets.language_loader import Language
 
 class EngLang(Language):
     def __init__(self, root, params, data=None, use_plurals=False, savenew=False):
+        self.root = root
         with open(root+params) as f:
             self.config = yaml.load(f, Loader=yaml.BaseLoader)['language']
         mx = int(self.config['maximum_word_length'])
@@ -60,7 +61,7 @@ class EngLang(Language):
                     self.phonemes[p] = ip
                     self.index_to_phon[ip] = p
                     ip += 1
-        pa = "datasets/Languages/English"
+        pa = self.root + "datasets/Languages/English"
         with open(f"{pa}/phonemes_{self.config['maximum_word_length']}.json", 'w') as fp:
             json.dump(self.phonemes, fp)
         with open(f"{pa}/data_{self.config['maximum_word_length']}.json", 'w') as fp:
