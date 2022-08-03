@@ -14,11 +14,12 @@ from datasets.language_loader import Language
 
 
 class EngLang(Language):
-    def __init__(self, params, data=None, use_plurals=False, savenew=False):
-        with open(params) as f:
+    def __init__(self, root, params, data=None, use_plurals=False, savenew=False):
+        with open(root+params) as f:
             self.config = yaml.load(f, Loader=yaml.BaseLoader)['language']
         mx = int(self.config['maximum_word_length'])
-        if data and os.path.isfile(f"{data}/data_{mx}.json"):
+        if data and os.path.isfile(f"{root+data}/data_{mx}.json"):
+            data = root+data
             with open(f"{data}/data_{mx}.json") as f:
                 self.data = json.load(f)
             with open(f"{data}/phonemes_{mx}.json") as f:
