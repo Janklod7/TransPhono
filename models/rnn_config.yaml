@@ -1,0 +1,14 @@
+model_type: rnn
+embedding_size: 30
+dropout: 0.2
+e_hid: 200,200
+d_hid: 200,200
+
+train_size: 0.7
+batch_size: 32
+generator_lr: 0.01
+discriminator_lr: 0.001
+epoches: 30
+log_intervals: 400
+
+
