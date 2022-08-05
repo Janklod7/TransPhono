@@ -26,7 +26,7 @@ class Trainer:
         self.log_intervals = int(self.config['log_intervals'])
 
 
-    def train_reconstruct(self, parameters=None):
+    def train_reconstruct(self, parameters=None, isTan=False):
         if not parameters:
             parameters = self.config
         generator = model_map[parameters["model_type"]](self.dataset, parameters, device=self.device) #TODO use features
@@ -42,7 +42,7 @@ class Trainer:
         best_model = None
         for epoch in range(1, int(parameters["epoches"]) + 1):
             epoch_start_time = time.time()
-            generator.train_epoch(train_data, parameters, gen_optimizer, criterion, epoch)
+            generator.train_epoch(train_data, parameters, gen_optimizer, criterion, epoch, isTan)
             val_loss = 10 * generator.evaluate(test_data, parameters, criterion, 5)
             val_ppl = math.exp(val_loss)
             elapsed = time.time() - epoch_start_time
@@ -50,6 +50,7 @@ class Trainer:
             print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
                   f'valid loss {val_loss:5.2f} | valid ppl {val_ppl:8.2f}')
             print('-' * 89)
+
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss

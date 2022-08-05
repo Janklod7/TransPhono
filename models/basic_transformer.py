@@ -58,6 +58,7 @@ class TransPhono(nn.Module):
             self.encoder = nn.Embedding(self.ntoken, self.embed_size)
             self.init_weights()
         self.sftmx = nn.Softmax(dim=2)
+        self.tanh = nn.Tanh()
 
     def init_weights(self) -> None:
         initrange = 0.1
@@ -65,14 +66,19 @@ class TransPhono(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: Tensor, src_mask: Tensor) -> Tensor:
-        src = self.encoder(src) * math.sqrt(self.d_hid)
+    def forward(self, src: Tensor, src_mask: Tensor, isTan = False) -> Tensor:
+        return self.decode(self.encode(src, src_mask, isTan))
 
+    def encode(self, src: Tensor, src_mask: Tensor, isTan = False) -> Tensor:
+        src = self.encoder(src) * math.sqrt(self.d_hid)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, src_mask)
-        output = self.decoder(output)
-
+        if isTan:
+          output = self.tanh(output)
         return output
+
+    def decode(self, src: Tensor) -> Tensor:
+        return self.decoder(src)
 
     def generate_words(self, src_mask):
 
@@ -84,7 +90,7 @@ class TransPhono(nn.Module):
 
         return output
 
-    def train_epoch(self, train_data, parameters, gen_optimizer, criterion, epoch):
+    def train_epoch(self, train_data, parameters, gen_optimizer, criterion, epoch, isTan=False):
 
         sft = nn.Softmax(dim=2)
         batch_size = int(parameters["batch_size"])
@@ -101,7 +107,7 @@ class TransPhono(nn.Module):
         for data, targets in iter(train_data):
             if len(data) != batch_size:  # only on last batch
                 src_mask = src_mask[:data.shape[0], :data.shape[0]]
-            output = self(data, src_mask)
+            output = self(data, src_mask, isTan)
             loss = 10 * criterion(output, targets.float())
 
             gen_optimizer.zero_grad()
