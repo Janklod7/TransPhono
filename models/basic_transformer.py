@@ -5,6 +5,8 @@ from torch import nn, Tensor
 import torch
 import math
 import time
+import numpy as np
+import matplotlib.pyplot as plt
 
 from torch.nn import TransformerEncoderLayer, TransformerEncoder
 
@@ -49,7 +51,7 @@ class TransPhono(nn.Module):
         self.dropout = float(self.config['dropout'])
 
         self.pos_encoder = PositionalEncoding(self.embed_size, self.dropout, max_len=int(self.config["batch_size"]))
-        encoder_layers = TransformerEncoderLayer(self.embed_size, self.nhead, self.d_hid, self.dropout)
+        encoder_layers = TransformerEncoderLayer(d_model=self.embed_size, nhead=self.nhead, dim_feedforward=self.d_hid, dropout=self.dropout, batch_first=True)
         self.transformer_encoder = TransformerEncoder(encoder_layers, self.nlayers)
         self.decoder = nn.Linear(self.embed_size, self.ntoken)
         if features is not None:
@@ -66,15 +68,15 @@ class TransPhono(nn.Module):
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
-    def forward(self, src: Tensor, src_mask: Tensor, isTan = False) -> Tensor:
+    def forward(self, src: Tensor, src_mask: Tensor, isTan=False) -> Tensor:
         return self.decode(self.encode(src, src_mask, isTan))
 
-    def encode(self, src: Tensor, src_mask: Tensor, isTan = False) -> Tensor:
+    def encode(self, src: Tensor, src_mask: Tensor, isTan=False) -> Tensor:
         src = self.encoder(src) * math.sqrt(self.d_hid)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, src_mask)
         if isTan:
-          output = self.tanh(output)
+            output = self.tanh(output)
         return output
 
     def decode(self, src: Tensor) -> Tensor:
@@ -107,8 +109,9 @@ class TransPhono(nn.Module):
         for data, targets in iter(train_data):
             if len(data) != batch_size:  # only on last batch
                 src_mask = src_mask[:data.shape[0], :data.shape[0]]
+            data = data.to(self.device)
             output = self(data, src_mask, isTan)
-            loss = 10 * criterion(output, targets.float())
+            loss = 10 * criterion(output, targets.float().to(self.device))
 
             gen_optimizer.zero_grad()
             loss.backward()
@@ -138,17 +141,52 @@ class TransPhono(nn.Module):
             fake_words = real_words = []
             if show_example > 0:
                 example_x, example_y = next(iter(eval_data))
+                example_x = example_x.to(self.device)
                 fake_words = self.dataset.vec2word(self(example_x, src_mask))
                 real_words = self.dataset.vec2word(example_y)
+                # latent = self.encode(example_x, src_mask, False)
+                # latent_shape = latent.shape
+                # forhist = latent.flatten().to("cpu").numpy()
+                # print("Latent space hystogram no TanH: ")
+                # plt.hist(forhist, bins=50)
+                # plt.show()
+
+                # forhist = self.encode(example_x, src_mask, True)
+                # forhist = forhist.flatten().to("cpu").numpy()
+                # print("Latent space hystogram: ")
+                # plt.hist(forhist, bins=50)
+                # plt.show()
+                # print(latent_shape)
+                # # noise = latent[torch.randperm(latent_shape[0]),torch.randperm(latent_shape[1]),torch.randperm(latent_shape[2])]
+                # noise = latent[:,:,torch.randperm(latent_shape[2])]
+                # # noise = ((torch.randn(latent_shape, device=self.device, generator=torch.Generator(device=self.device)) * 2) - 1)
+                # # noise = torch.log(noise) / torch.max(noise).item() * 2
+                # # # noise = (torch.ones(noise.shape) * 2.5).to(self.device) - noise
+                # forhist = noise.flatten().to("cpu").numpy()
+                # print("noise hystogram b4 tanh: ")
+                # plt.hist(forhist, bins=50)
+                # plt.show()
+                # noise = self.tanh(noise)
+                # forhist = noise.flatten().to("cpu").numpy()
+                # print("noise hystogram after tanh: ")
+                # plt.hist(forhist, bins=50)
+                # plt.show()
+                # noise = self.decode(noise)
+                # noises = self.dataset.vec2word(noise)
+                # print("NOISES:", )
+                # for n in noises[:show_example]:
+                #     print(n)
+                # print("RECONSTRUCTS:")
+                for f, r in zip(fake_words[:show_example], real_words[:show_example]):
+                    print(f, ",", r)
             for data, targets in iter(eval_data):
                 if len(data) != batch_size:  # only on last batch
                     src_mask = src_mask[:data.shape[0], :data.shape[0]]
+                data = data.to(self.device)
                 output = self(data, src_mask)
-                total_loss += batch_size * criterion(output, targets.float()).item()
-            for f, r in zip(fake_words[:show_example], real_words[:show_example]):
-                print(f, ",", r)
-        return total_loss / ((len(eval_data) * batch_size - 1) - 1)
+                total_loss += batch_size * criterion(output, targets.float().to(self.device)).item()
 
+        return total_loss / ((len(eval_data) * batch_size - 1) - 1)
 
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:

@@ -29,12 +29,12 @@ class Trainer:
     def train_reconstruct(self, parameters=None, isTan=False):
         if not parameters:
             parameters = self.config
-        generator = model_map[parameters["model_type"]](self.dataset, parameters, device=self.device) #TODO use features
+        generator = model_map[parameters["model_type"]](self.dataset, parameters, device=self.device).to(self.device) #TODO use features
         criterion = nn.CrossEntropyLoss()
         batch_size = int(parameters["batch_size"])
         train_data, test_data = self.dataset.generate_loader(batch_size, float(parameters["train_size"]), device=self.device)
         example_x, example_y = next(iter(test_data))
-        print(f"size of embedding:", generator.encoder(example_x).shape)
+        print(f"size of embedding:", generator.encoder(example_x.to(self.device)).shape)
 
         gen_optimizer = torch.optim.SGD(generator.parameters(), lr=self.gen_lr)
         best_val_loss = float('inf')
