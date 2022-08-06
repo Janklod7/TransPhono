@@ -49,9 +49,12 @@ class TransPhono(nn.Module):
         self.nlayers = int(self.config['nlayers'])
         self.embed_size = int(self.config['embedding_size'])
         self.dropout = float(self.config['dropout'])
+        self.seq_len = int(self.dataset.language.config['maximum_word_length'])
 
-        self.pos_encoder = PositionalEncoding(self.embed_size, self.dropout, max_len=int(self.config["batch_size"]))
-        encoder_layers = TransformerEncoderLayer(d_model=self.embed_size, nhead=self.nhead, dim_feedforward=self.d_hid, dropout=self.dropout, batch_first=True)
+
+        self.pos_encoder = PositionalEncoding(self.embed_size, self.dropout, max_len=self.seq_len)
+        encoder_layers = TransformerEncoderLayer(d_model=self.embed_size,
+            nhead=self.nhead, dim_feedforward=self.d_hid, dropout=self.dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, self.nlayers)
         self.decoder = nn.Linear(self.embed_size, self.ntoken)
         if features is not None:
@@ -69,32 +72,29 @@ class TransPhono(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: Tensor, src_mask: Tensor, isTan=False) -> Tensor:
-        return self.decode(self.encode(src, src_mask, isTan))
+        src = torch.permute(src, (1,0))
+        return self.decode(self.encode(src, src_mask, isTan), src_mask)
 
     def encode(self, src: Tensor, src_mask: Tensor, isTan=False) -> Tensor:
         src = self.encoder(src) * math.sqrt(self.d_hid)
         src = self.pos_encoder(src)
-        output = self.transformer_encoder(src, src_mask)
+        # src = self.transformer_encoder(src, src_mask)
         if isTan:
-            output = self.tanh(output)
-        return output
+            src = self.tanh(src)
+        return src
 
-    def decode(self, src: Tensor) -> Tensor:
-        return self.decoder(src)
+    def decode(self, src: Tensor, src_mask: Tensor) -> Tensor:
+        src = self.transformer_encoder(src, src_mask)
+        return torch.permute(self.decoder(src), (1,0,2))
 
-    def generate_words(self, src_mask):
-
-        fake_gen = (torch.rand((self.batch_size, len(self.dataset.language.phonemes), self.embed_size),
-                               device=self.device) * 2 - 1) * math.sqrt(self.d_hid)
-        src = self.pos_encoder(fake_gen)
-        output = self.transformer_encoder(src, src_mask)
-        output = self.decoder(output)
-
-        return output
+    def generate_noise(self, batch_size, isTan=False, noise_gen=None):
+        noise = (torch.rand((self.seq_len, batch_size, self.embed_size), generator=noise_gen) * 2) - 1
+        if isTan:
+            noise = self.tanh(noise)
+        return noise
 
     def train_epoch(self, train_data, parameters, gen_optimizer, criterion, epoch, isTan=False):
 
-        sft = nn.Softmax(dim=2)
         batch_size = int(parameters["batch_size"])
         log_interval = int(parameters["log_intervals"])
         gen_scheduler = torch.optim.lr_scheduler.StepLR(gen_optimizer, 1, gamma=0.95)
@@ -102,12 +102,12 @@ class TransPhono(nn.Module):
         total_loss = 0.
 
         start_time = time.time()
-        src_mask = generate_square_subsequent_mask(batch_size).to(self.device)
+        src_mask = generate_square_subsequent_mask(self.seq_len).to(self.device)
 
         num_batches = len(train_data)
         batch = 0
         for data, targets in iter(train_data):
-            if len(data) != batch_size:  # only on last batch
+            if len(data[0]) != self.seq_len:  # only on last batch
                 src_mask = src_mask[:data.shape[0], :data.shape[0]]
             data = data.to(self.device)
             output = self(data, src_mask, isTan)
@@ -136,51 +136,50 @@ class TransPhono(nn.Module):
         self.eval()
         batch_size = int(parameters["batch_size"])
         total_loss = 0.
-        src_mask = generate_square_subsequent_mask(batch_size).to(self.device)
+        src_mask = generate_square_subsequent_mask(self.seq_len).to(self.device)
         with torch.no_grad():
-            fake_words = real_words = []
             if show_example > 0:
                 example_x, example_y = next(iter(eval_data))
                 example_x = example_x.to(self.device)
                 fake_words = self.dataset.vec2word(self(example_x, src_mask))
                 real_words = self.dataset.vec2word(example_y)
-                # latent = self.encode(example_x, src_mask, False)
-                # latent_shape = latent.shape
-                # forhist = latent.flatten().to("cpu").numpy()
-                # print("Latent space hystogram no TanH: ")
-                # plt.hist(forhist, bins=50)
-                # plt.show()
+                latent = self.encode(torch.permute(example_x,(1,0)), src_mask, False)
+                latent_shape = latent.shape
+                forhist = latent.flatten().to("cpu").numpy()
+                print("Latent space hystogram no TanH: ")
+                plt.hist(forhist, bins=50)
+                plt.show()
 
-                # forhist = self.encode(example_x, src_mask, True)
-                # forhist = forhist.flatten().to("cpu").numpy()
-                # print("Latent space hystogram: ")
-                # plt.hist(forhist, bins=50)
-                # plt.show()
-                # print(latent_shape)
-                # # noise = latent[torch.randperm(latent_shape[0]),torch.randperm(latent_shape[1]),torch.randperm(latent_shape[2])]
-                # noise = latent[:,:,torch.randperm(latent_shape[2])]
-                # # noise = ((torch.randn(latent_shape, device=self.device, generator=torch.Generator(device=self.device)) * 2) - 1)
-                # # noise = torch.log(noise) / torch.max(noise).item() * 2
-                # # # noise = (torch.ones(noise.shape) * 2.5).to(self.device) - noise
-                # forhist = noise.flatten().to("cpu").numpy()
-                # print("noise hystogram b4 tanh: ")
-                # plt.hist(forhist, bins=50)
-                # plt.show()
-                # noise = self.tanh(noise)
-                # forhist = noise.flatten().to("cpu").numpy()
-                # print("noise hystogram after tanh: ")
-                # plt.hist(forhist, bins=50)
-                # plt.show()
-                # noise = self.decode(noise)
-                # noises = self.dataset.vec2word(noise)
-                # print("NOISES:", )
-                # for n in noises[:show_example]:
-                #     print(n)
-                # print("RECONSTRUCTS:")
+                forhist = self.tanh(latent)
+                forhist = forhist.flatten().to("cpu").numpy()
+                print("Latent space hystogram: ")
+                plt.hist(forhist, bins=50)
+                plt.show()
+                print(latent_shape)
+                # noise = latent[torch.randperm(latent_shape[0]),torch.randperm(latent_shape[1]),torch.randperm(latent_shape[2])]
+                noise = latent[:,:,torch.randperm(latent_shape[2])]
+                # noise = ((torch.randn(latent_shape, device=self.device, generator=torch.Generator(device=self.device)) * 2) - 1)
+                # noise = torch.log(noise) / torch.max(noise).item() * 2
+                # # noise = (torch.ones(noise.shape) * 2.5).to(self.device) - noise
+                forhist = noise.flatten().to("cpu").numpy()
+                print("noise hystogram b4 tanh: ")
+                plt.hist(forhist, bins=50)
+                plt.show()
+                noise = self.tanh(noise)
+                forhist = noise.flatten().to("cpu").numpy()
+                print("noise hystogram after tanh: ")
+                plt.hist(forhist, bins=50)
+                plt.show()
+                noise =torch.permute(self.decode(noise, src_mask), (1,0,2))
+                noises = self.dataset.vec2word(noise)
+                print("NOISES:", )
+                for n in noises[:show_example]:
+                    print(n)
+                print("RECONSTRUCTS:")
                 for f, r in zip(fake_words[:show_example], real_words[:show_example]):
                     print(f, ",", r)
             for data, targets in iter(eval_data):
-                if len(data) != batch_size:  # only on last batch
+                if len(data[0]) != self.seq_len:  # only on last batch
                     src_mask = src_mask[:data.shape[0], :data.shape[0]]
                 data = data.to(self.device)
                 output = self(data, src_mask)

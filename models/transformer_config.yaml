@@ -1,4 +1,5 @@
-model_type: basic transformer
+gen_type: basic transformer
+disc_type: basic transformer disc
 embedding_size: 30
 nhead: 2
 nlayers: 3

@@ -6,9 +6,11 @@ import copy
 from torch import nn
 
 from datasets.language_loader import LanguageData
-from models.basic_transformer import TransPhono, generate_square_subsequent_mask
+from models.basic_transformer import TransPhono
+from models.basic_transformer_disc import TransPhonoDisc
 
 model_map = {"basic transformer": TransPhono,
+             "basic transformer disc": TransPhonoDisc
              }
 
 
@@ -29,7 +31,7 @@ class Trainer:
     def train_reconstruct(self, parameters=None, isTan=False):
         if not parameters:
             parameters = self.config
-        generator = model_map[parameters["model_type"]](self.dataset, parameters, device=self.device).to(self.device) #TODO use features
+        generator = model_map[parameters["gen_type"]](self.dataset, parameters, device=self.device).to(self.device) #TODO use features
         criterion = nn.CrossEntropyLoss()
         batch_size = int(parameters["batch_size"])
         train_data, test_data = self.dataset.generate_loader(batch_size, float(parameters["train_size"]), device=self.device)
@@ -56,6 +58,41 @@ class Trainer:
                 best_val_loss = val_loss
                 best_model = copy.deepcopy(generator)
         return best_model
+
+    def train_gan(self, parameters=None, isTan=False):
+        if not parameters:
+            parameters = self.config
+        generator = model_map[parameters["gen_type"]](self.dataset, parameters, device=self.device).to(self.device) #TODO use features
+        discriminator = model_map[parameters["disc_type"]](self.dataset, parameters, device=self.device).to(
+            self.device)  # TODO use features
+        criterion = nn.CrossEntropyLoss()
+        batch_size = int(parameters["batch_size"])
+        train_data, test_data = self.dataset.generate_loader(batch_size, float(parameters["train_size"]), device=self.device)
+        example_x, example_y = next(iter(test_data))
+        print(f"size of embedding:", generator.encoder(example_x.to(self.device)).shape)
+
+        gen_optimizer = torch.optim.SGD(generator.parameters(), lr=self.gen_lr)
+        disc_optimizer = torch.optim.SGD(discriminator.parameters(), lr=self.disc_lr)
+        best_val_loss = float('inf')
+
+        best_gan = None
+        best_disc = None
+        for epoch in range(1, int(parameters["epoches"]) + 1):
+            epoch_start_time = time.time()
+            discriminator.train_epoch(train_data, parameters, generator, gen_optimizer, disc_optimizer, criterion, epoch, isTan)
+            disc_loss, gen_loss = discriminator.evaluate(test_data, generator, parameters, criterion, 5)
+            elapsed = time.time() - epoch_start_time
+            print('-' * 89)
+            print(f'| end of epoch {epoch:3d} | time: {elapsed:5.2f}s | '
+                  f'discriminator loss {disc_loss:5.2f} | generator loss {gen_loss:8.2f}')
+            print('-' * 89)
+
+
+            if disc_loss + gen_loss < best_val_loss:
+                best_val_loss = disc_loss + gen_loss
+                best_gan = copy.deepcopy(generator)
+                best_disc = copy.deepcopy(discriminator)
+        return best_gan, best_disc
 
 
 
