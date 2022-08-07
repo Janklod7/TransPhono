@@ -54,7 +54,7 @@ class TransPhonoDisc(nn.Module):
 
         self.pos_encoder = PositionalEncoding(self.embed_size, self.dropout, max_len=self.seq_len)
         encoder_layers = TransformerEncoderLayer(d_model=self.embed_size,
-            nhead=self.nhead, dim_feedforward=self.d_hid, dropout=self.dropout)
+                                                 nhead=self.nhead, dim_feedforward=self.d_hid, dropout=self.dropout)
         self.transformer_encoder = TransformerEncoder(encoder_layers, self.nlayers)
         self.decoder = nn.Linear(self.embed_size, 1)
         if features is not None:
@@ -72,14 +72,15 @@ class TransPhonoDisc(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: Tensor, src_mask: Tensor) -> Tensor:
-        src = torch.permute(src, (1,0))
+        src = torch.permute(src, (1, 0))
         src = self.encoder(src) * math.sqrt(self.d_hid)
         src = self.pos_encoder(src)
         src = self.transformer_encoder(src, src_mask)
         src = self.decoder(src)
         return torch.permute(src, (1, 0, 2))
 
-    def train_epoch(self, train_data, parameters, generator: TransPhono, gen_optimizer, disc_optimizer, criterion, epoch, isTan=False):
+    def train_epoch(self, train_data, parameters, generator: TransPhono, gen_optimizer, disc_optimizer, criterion,
+                    epoch, isTan=False):
 
         log_interval = int(parameters["log_intervals"])
         batch_size = int(self.config["batch_size"])
@@ -108,7 +109,7 @@ class TransPhonoDisc(nn.Module):
             real_loss = criterion(real_disc, ones_target)
             total_loss["real"] += real_loss.item()
 
-            noise = generator.generate_noise(batch_size, isTan, noise_gen)
+            noise = generator.generate_noise(batch_size, isTan, noise_gen).to(self.device)
             fakes_disc = generator.decode(noise, src_mask)
             fakes_disc = self(torch.max(sgmd(fakes_disc), dim=2).indices, src_mask)
             fake_loss = criterion(fakes_disc, zeros_target)
@@ -118,11 +119,12 @@ class TransPhonoDisc(nn.Module):
             disc_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.parameters(), 0.5)
             disc_optimizer.step()
-
-            gen_optimizer.zero_grad()
-            output = generator(data, src_mask, isTan)
-            reconstruct_loss = 4*criterion(output, targets.float().to(self.device))
-            total_loss["reconstruct"] += reconstruct_loss.item()
+            reconstruct_loss = 0
+            if batch % 1 == 0:
+                gen_optimizer.zero_grad()
+                output = generator(data, src_mask, isTan)
+                reconstruct_loss = criterion(output, targets.float().to(self.device))
+                total_loss["reconstruct"] += reconstruct_loss.item()
 
             fake_gen = generator.decode(noise, src_mask)
             fake_gen = self(torch.max(sgmd(fake_gen), dim=2).indices, src_mask)
@@ -141,71 +143,72 @@ class TransPhonoDisc(nn.Module):
 
                 print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
                       f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
-                      f'real_loss {total_loss["real"]/log_interval:5.2f} |',
-                      f'fake_loss {total_loss["fake"]/log_interval:5.2f} |',
-                      f'reconstruct_loss {total_loss["reconstruct"]/log_interval:5.2f} |',
-                      f'noise_loss {total_loss["noise"]/log_interval:5.2f} |',)
+                      f'real_loss {total_loss["real"] / log_interval:5.2f} |',
+                      f'fake_loss {total_loss["fake"] / log_interval:5.2f} |',
+                      f'reconstruct_loss {total_loss["reconstruct"] / log_interval:5.2f} |',
+                      f'noise_loss {total_loss["noise"] / log_interval:5.2f} |', )
                 total_loss = {"real": 0., "fake": 0., "reconstruct": 0., "noise": 0.}
                 start_time = time.time()
         gen_scheduler.step()
         disc_scheduler.step()
 
-    def evaluate(self, eval_data: Tensor, generator, parameters, criterion, show_example=0, isTan= False):
+    def evaluate(self, eval_data: Tensor, generator, parameters, criterion, show_example=0, isTan=False):
         batch_size = int(self.config["batch_size"])
         self.eval()
         generator.eval()
         total_loss = {"real": 0., "fake": 0., "reconstruct": 0., "noise": 0.}
         noise_gen = torch.Generator()
-        example_x, example_y = next(iter(eval_data))
-        example_x = example_x.to(self.device)
-        ones_target = torch.ones((batch_size, 1)).long().to(self.device)
-        zeros_target = torch.zeros((batch_size, 1)).long().to(self.device)
-        src_mask = generate_square_subsequent_mask(self.seq_len).to(self.device)
-        for data, targets in iter(eval_data):
-            if len(data[0]) != self.seq_len:  # only on last batch
-                src_mask = src_mask[:data.shape[0], :data.shape[0]]
-            sgmd = nn.Sigmoid()
-            data = data.to(self.device)
+        with torch.no_grad():
+            example_x, example_y = next(iter(eval_data))
+            example_x = example_x.to(self.device)
+            ones_target = torch.ones((batch_size, 1)).long().to(self.device)
+            zeros_target = torch.zeros((batch_size, 1)).long().to(self.device)
+            src_mask = generate_square_subsequent_mask(self.seq_len).to(self.device)
 
-            real_disc = sgmd(self(data, src_mask))
-            real_loss = criterion(real_disc, ones_target)
-            total_loss["real"] += real_loss.item()
+            for data, targets in iter(eval_data):
+                if len(data[0]) != self.seq_len:  # only on last batch
+                    src_mask = src_mask[:data.shape[0], :data.shape[0]]
+                sgmd = nn.Sigmoid()
+                data = data.to(self.device)
+                real_disc = sgmd(self(data, src_mask))
+                if len(data) != len(ones_target):
+                    real_loss = criterion(real_disc, ones_target[:len(data), :])
+                else:
+                    real_loss = criterion(real_disc, ones_target)
+                total_loss["real"] += real_loss.item()
 
-            noise = generator.generate_noise(batch_size, isTan, noise_gen)
-            fakes_disc = generator.decode(noise, src_mask)
-            fakes_disc = self(torch.max(sgmd(fakes_disc), dim=2).indices, src_mask)
-            fake_loss = criterion(fakes_disc, zeros_target)
-            total_loss["fake"] += fake_loss.item()
+                noise = generator.generate_noise(batch_size, isTan, noise_gen).to(self.device)
+                fakes_disc = generator.decode(noise, src_mask)
+                fakes_disc = self(torch.max(sgmd(fakes_disc), dim=2).indices, src_mask)
+                fake_loss = criterion(fakes_disc, zeros_target)
+                total_loss["fake"] += fake_loss.item()
+                disc_loss = real_loss + fake_loss
 
-            disc_loss = real_loss + fake_loss
-            disc_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.parameters(), 0.5)
+                output = generator(data, src_mask, isTan=isTan)
+                reconstruct_loss = 4 * criterion(output, targets.float().to(self.device))
+                total_loss["reconstruct"] += reconstruct_loss.item()
 
-            output = generator(data, src_mask, isTan= isTan)
-            reconstruct_loss = 4 * criterion(output, targets.float().to(self.device))
-            total_loss["reconstruct"] += reconstruct_loss.item()
+                fake_gen = generator.decode(noise, src_mask)
+                fake_gen = self(torch.max(sgmd(fake_gen), dim=2).indices, src_mask)
+                noise_loss = criterion(fake_gen, ones_target)
+                total_loss["noise"] += noise_loss.item()
 
-            fake_gen = generator.decode(noise, src_mask)
-            fake_gen = self(torch.max(sgmd(fake_gen), dim=2).indices, src_mask)
-            noise_loss = criterion(fake_gen, ones_target)
-            total_loss["noise"] += noise_loss.item()
-
-            gen_loss = reconstruct_loss + noise_loss
-            gen_loss.backward()
-            torch.nn.utils.clip_grad_norm_(generator.parameters(), 0.5)
+                # gen_loss = reconstruct_loss + noise_loss
+                gen_loss = noise_loss
 
             fake_words = self.dataset.vec2word(generator(example_x, src_mask))
             real_words = self.dataset.vec2word(example_y)
             print("RECONSTRUCTION:")
             for f, r in zip(fake_words[:show_example], real_words[:show_example]):
                 print(f, ",", r)
-            noise = generator.generate_noise(batch_size, isTan, noise_gen)
+            noise = generator.generate_noise(batch_size, isTan, noise_gen).to(self.device)
             fake_words = self.dataset.vec2word(generator.decode(noise, src_mask))
             print("GENERATION:")
             for f in fake_words[:show_example]:
                 print(f)
 
-            return ((total_loss["real"] + total_loss["fake"]) / ((len(eval_data) * batch_size - 1) - 1), (total_loss["reconstruct"] + total_loss["noise"]) / ((len(eval_data) * batch_size - 1) - 1))
+        return ((total_loss["real"] + total_loss["fake"]) / ((len(eval_data) * batch_size - 1) - 1),
+                (total_loss["reconstruct"] + total_loss["noise"]) / ((len(eval_data) * batch_size - 1) - 1))
 
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:

@@ -42,6 +42,7 @@ class EngLang(Language):
         self.index_to_phon = {0: ""}
         self.phonemes = {"": 0}
         self.phonemes["PLUR"] = 1
+        self.index_to_phon[1] = "PLUR"
         toolong = 0
         maxlen = 0
         ip = 2
