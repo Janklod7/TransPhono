@@ -1,7 +1,9 @@
 import torch
+from scipy import spatial
+import torch.nn.functional as F
 class EngFeatures:
 
-    def __init__(self):
+    def __init__(self, pad=(0,0)):
         self.names = "voc, cons, high, back, low, ant, cor, round, voice, cont, nasal, strid, edge".split(", ")
         self.ipa = {'': '', 'AA': 'ɑ', 'AE': 'æ', 'AH0': 'ə', 'AH': 'ʌ',  'AO': 'ɔ',
                     'EH': 'ɛ', 'IH': 'ɪ', 'IY': 'i', 'UH': 'ʊ', 'UW': 'u', 'EE': 'e', 'OO': 'o',
@@ -49,19 +51,28 @@ class EngFeatures:
                              'BEG': [0,0,0,0,0,0,0,0,0,0,0,0,-1],
                              'END': [0,0,0,0,0,0,0,0,0,0,0,0,1]}
         self.phon_lst = list(self.feature_dict.keys())
-        self.feature_mat = torch.tensor(list(self.feature_dict.values()))
+        self.feature_mat = torch.tensor(list(self.feature_dict.values())).float()
+        self.feature_mat = F.pad(self.feature_mat, pad, "constant", 0)
         # OY = AO, IH. OW = OO, AW. EY = EE, IH. AI = AH, IH. ER = AH0, R. EE = e, OO = o
         self.replace = {'OY': ['AO', 'IH'], 'OW': ['OO', 'UH'], 'AW': ['AH', 'UH'],'AY': ['AH', 'IH'],
                         'EY': ['EE', 'IH'], 'ER': ['AH0', 'R']}
+        self.num_of_features = 13
+        self.tree = spatial.KDTree(self.feature_mat.detach().numpy())
 
 
 if __name__ == "__main__":
-    eng = EngFeatures()
+    eng = EngFeatures(pad=(0,1))
     print(eng.names)
     for p in eng.feature_dict:
         if len(eng.feature_dict[p]) != 13:
             print(p, len(eng.feature_dict[p]))
+    print(eng.feature_mat)
     print(eng.feature_mat.shape)
     for p in eng.ipa:
         if p not in eng.feature_dict:
             print(p)
+
+    loss = torch.nn.L1Loss(reduction='none')
+    # print(loss(eng.feature_mat[0].unsqueeze(0), eng.feature_mat))
+
+

@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, random_split
 class Language(ABC):
 
     def __init__(self):
+        self.features = None
         self.phonemes = None
         self.data = None
         self.index_to_phon = None
@@ -48,8 +49,11 @@ class LanguageData(Dataset):
         test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
         return train_dataloader, test_dataloader
 
-    def vec2word(self, output):
-        phoneme_indices = torch.max(output, dim=2).indices
+    def vec2word(self, output, isFeatures = False):
+        if isFeatures:
+            phoneme_indices = self.language.features.tree.query(output)[1]
+        else:
+            phoneme_indices = torch.max(output, dim=2).indices
         words = []
         for w in phoneme_indices:
             word = []

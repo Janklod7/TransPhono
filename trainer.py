@@ -28,11 +28,15 @@ class Trainer:
         self.log_intervals = int(self.config['log_intervals'])
 
 
-    def train_reconstruct(self, parameters=None, isTan=False):
+    def train_reconstruct(self, parameters=None, isTan=False, use_features=False):
         if not parameters:
             parameters = self.config
-        generator = model_map[parameters["gen_type"]](self.dataset, parameters, device=self.device).to(self.device) #TODO use features
+        if use_features:
+            features = self.dataset.language.features.feature_mat.to(self.device)
+        generator = model_map[parameters["gen_type"]](self.dataset, parameters, device=self.device, features=features).to(self.device) #TODO use features
         criterion = nn.CrossEntropyLoss()
+        if use_features:
+            criterion = nn.L1Loss()
         batch_size = int(parameters["batch_size"])
         train_data, test_data = self.dataset.generate_loader(batch_size, float(parameters["train_size"]), device=self.device)
         example_x, example_y = next(iter(test_data))

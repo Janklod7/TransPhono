@@ -13,6 +13,8 @@ from datasets.language_loader import Language
 class EngLang(Language):
     def __init__(self, root, params, data=None, use_plurals=False, use_features=False, savenew=False):
         self.root = root
+        if use_features:
+            self.features = EngFeatures(pad=(0,0))
         with open(root+params) as f:
             self.config = yaml.load(f, Loader=yaml.BaseLoader)['language']
         mx = int(self.config['maximum_word_length'])
@@ -26,8 +28,12 @@ class EngLang(Language):
                 self.phonemes = json.load(f)
             with open(f"{data}/index_to_phon_{mx}.json") as f:
                 self.index_to_phon = json.load(f)
-            with open(f"{data}/plurals_{mx}.json") as f:
-                self.plurals = json.load(f)
+                new_index = {}
+                for i in self.index_to_phon:
+                    new_index[int(i)] = self.index_to_phon[i]
+                self.index_to_phon = new_index
+            # with open(f"{data}/plurals_{mx}.json") as f:
+            #     self.plurals = json.load(f)
         else:
             if use_features:
                 self.parse_new_features(savenew)
@@ -101,7 +107,6 @@ class EngLang(Language):
     def parse_new_features(self, save=False):
         response = requests.get("http://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b").text.split("\n")
         self.data = {}
-        self.features = EngFeatures()
         self.phonemes = {}
         self.index_to_phon = {}
         for i, p in enumerate(self.features.phon_lst):
@@ -184,6 +189,17 @@ class EngLang(Language):
 
 
 if __name__ == "__main__":
-    eng = EngLang("C:/repos/TransPhono/","datasets/english_config.yaml", data="Languages/English", use_features=True, savenew=True)
-    print(list(eng.data.values())[:10])
-    print(eng.phonemes)
+    from scipy import spatial
+    eng = EngLang("C:/repos/TransPhono/","datasets/english_config.yaml", data="datasets/Languages/English", use_features=True, savenew=False)
+    # print(list(eng.data.values())[:10])
+    # print(eng.phonemes)
+    word = ['BEG', 'B', 'UH', 'K']
+    w = eng.word2vec(word).unsqueeze(0)
+    print(w)
+    embd = torch.nn.Embedding.from_pretrained(eng.features.feature_mat, freeze=True)
+    w = embd(w)
+    # print(w)
+    loss = torch.nn.L1Loss(reduction='none')
+    dists = []
+    tree = spatial.KDTree(eng.features.feature_mat.detach().numpy())
+    print(tree.query(w)[1])

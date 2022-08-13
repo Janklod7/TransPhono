@@ -1,6 +1,6 @@
 gen_type: basic transformer
 disc_type: basic transformer disc
-embedding_size: 30
+embedding_size: 20
 nhead: 2
 nlayers: 3
 dropout: 0.2
@@ -8,7 +8,7 @@ d_hid: 200
 
 train_size: 0.7
 batch_size: 32
-generator_lr: 0.01
+generator_lr: 0.02
 discriminator_lr: 0.001
 epoches: 30
 log_intervals: 400
