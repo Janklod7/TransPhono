@@ -6,13 +6,14 @@ import os
 import torch.nn.functional as F
 import requests
 
-from datasets.english_features import EngFeatures
+from datasets.english_features_new import EngFeatures
 from datasets.language_loader import Language
 
 
 class EngLang(Language):
-    def __init__(self, root, params, data=None, use_plurals=False, use_features=False, savenew=False):
+    def __init__(self, root, params, data=None, use_plurals=False, use_features=False, savenew=False, bind_ends=False):
         self.root = root
+        self.bind_ends = bind_ends
         if use_features:
             self.features = EngFeatures(pad=(0,0))
         with open(root+params) as f:
@@ -58,7 +59,8 @@ class EngLang(Language):
             if len(d) == 0 or d[0] == ";":
                 continue
             d = d.split(" ")
-            phonms = ["BEG"] + d[2:] + ["END"]
+            if self.bind_ends:
+                phonms = ["BEG"] + d[2:] + ["END"]
             if len(phonms) > int(self.config['maximum_word_length']):
                 toolong += 1
                 continue
