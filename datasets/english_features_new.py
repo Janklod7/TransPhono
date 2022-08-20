@@ -50,27 +50,32 @@ class EngFeatures:
                              'Z': [-1,1,-1,-1,-1,1,1,0,1,1,-1,1,0,0],}
         self.phon_lst = list(self.feature_dict.keys())
         self.feature_mat = torch.tensor(list(self.feature_dict.values())).float()
-        self.feature_mat = F.pad(self.feature_mat, pad, "constant", 0)
+        # self.feature_mat = F.pad(self.feature_mat, pad, "constant", 0)
         # OY = AO, IH. OW = OO, AW. EY = EE, IH. AI = AH, IH. ER = AH0, R. EE = e, OO = o
         self.replace = {'OY': ['AO', 'IH'], 'OW': ['OO', 'UH'], 'AW': ['AH', 'UH'],'AY': ['AH', 'IH'],
                         'EY': ['EE', 'IH'], 'ER': ['AH0', 'R']}
-        self.num_of_features = 13
+        self.num_of_features = 14
         self.tree = spatial.KDTree(self.feature_mat.detach().numpy())
 
 
 if __name__ == "__main__":
-    eng = EngFeatures(pad=(0,1))
+    eng = EngFeatures(pad=(0,0))
     print(eng.names)
     for p in eng.feature_dict:
-        if len(eng.feature_dict[p]) != 15:
+        if len(eng.feature_dict[p]) != 14:
             print(p, len(eng.feature_dict[p]))
-    print(eng.feature_mat)
+    print(eng.feature_mat.shape)
     print(eng.feature_mat.shape)
     for p in eng.ipa:
         if p not in eng.feature_dict:
             print(p)
 
     loss = torch.nn.L1Loss(reduction='none')
+    for i in range(len(eng.feature_mat)):
+        for j in range(len(eng.feature_mat)):
+            if i != j:
+                if torch.sum(loss(eng.feature_mat[i], eng.feature_mat[j])).item() == 0:
+                    print(i, j)
     # print(loss(eng.feature_mat[0].unsqueeze(0), eng.feature_mat))
 
 
