@@ -61,6 +61,8 @@ class EngLang(Language):
             d = d.split(" ")
             if self.bind_ends:
                 phonms = ["BEG"] + d[2:] + ["END"]
+            else:
+                phonms = d[2:]
             if len(phonms) > int(self.config['maximum_word_length']):
                 toolong += 1
                 continue
@@ -120,7 +122,10 @@ class EngLang(Language):
             if len(d) == 0 or d[0] == ";":
                 continue
             d = d.split(" ")
-            phonms = ["BEG"] + d[2:] + ["END"]
+            if self.bind_ends:
+                phonms = ["BEG"] + d[2:] + ["END"]
+            else:
+                phonms = d[2:]
             new_phonms = []
             for p in phonms:
                 if p != 'AH0':
@@ -195,7 +200,7 @@ if __name__ == "__main__":
     eng = EngLang("C:/repos/TransPhono/","datasets/english_config.yaml", data="datasets/Languages/English", use_features=True, savenew=False)
     # print(list(eng.data.values())[:10])
     # print(eng.phonemes)
-    word = ['BEG', 'B', 'UH', 'K']
+    word = [ 'B', 'UH']
     w = eng.word2vec(word).unsqueeze(0)
     print(w)
     embd = torch.nn.Embedding.from_pretrained(eng.features.feature_mat, freeze=True)
